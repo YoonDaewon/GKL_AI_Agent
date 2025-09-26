@@ -1,0 +1,13 @@
+{
+  "name": "fe-deploy",
+  "version": "1.0.0",
+  "scripts": {
+    "pre-deploy": "node pre-deploy.js",
+    "deploy": "aws s3 sync ./../assets/ s3://$FE_DEPLOY_BUCKET",
+    "purge": "node cf-update.js"
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1688.0",
+    "fs-extra": "^11.2.0"
+  }
+}

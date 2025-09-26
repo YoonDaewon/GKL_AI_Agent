@@ -1,0 +1,86 @@
+#!groovy
+
+node {
+  env.NODEJS_HOME = "${tool 'nodejs'}"
+  env.PATH="${env.NODEJS_HOME}/bin:${env.PATH}"
+
+  /////////////////////////////////////////////////////////////////////
+
+  // Set your own value here.
+  def TargetServer = "gamoa-frontend"
+  def DockerRepositoryName = "gamoa-frontend"
+  def DockerTagNamePrefix = ""
+  def DockerFilePath = "./deploy/Dockerfile"
+  
+  /////////////////////////////////////////////////////////////////////
+
+  def AppRootDir = "app"
+  def DockerBaseImage
+  def DockerRepo = "${ECR_NAMESPACE}/${DockerRepositoryName}".toString()
+  def DockerTagName
+  def DockerImageName
+  def GitTagName
+  def AppVersion
+  def Workspace
+  def CommitId
+  def app
+
+  stage ('Whoami') {
+    sh 'whoami'
+    Workspace = pwd()
+    sh "echo ${Workspace}"
+  }
+  stage ('Clone Repository') {
+    checkout scm
+    CommitId = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
+  }
+  stage ('Version Check') {
+    AppVersion = sh(script: 'node -e "console.log(require(\'./package.json\').version)"', returnStdout: true).trim()
+    DockerTagName = "${DockerTagNamePrefix}v${AppVersion}-${CommitId}"
+    DockerImageName = "${DockerRepo}:${DockerTagName}"
+  }
+  stage ('Build Docker Image') {
+    //withEnv(['DOCKER_BUILDKIT=1']) {
+      app = docker.build("${DockerImageName}", "-f ${DockerFilePath} --ssh pk-for-github=\"$HOME/.ssh/id_rsa\" --build-arg next_public_api_url=${NEXT_PUBLIC_API_URL} --build-arg next_public_cdn_url=${NEXT_PUBLIC_CDN_URL} --target production .")
+    //echo "Build multi architecture images..."
+    //sh "sudo docker buildx build --push -t ${DockerImageName} --builder multi-arch-builder --platform linux/arm64 --ssh pk-for-github=\"$HOME/.ssh/id_rsa\" --target production -f ${DockerFilePath} ."
+
+    // cleanup current user docker credentials
+  	//sh 'rm -f ~/.dockercfg ~/.docker/config.json || true'
+
+  	// configure registry
+  	//docker.withRegistry("https://${ECR_HOST}", "${ECR_CREDENTIAL}") {
+
+      //sh "sudo docker buildx build --push -t ${DockerImageName} --builder multi-arch-builder --platform linux/arm64 --ssh pk-for-github=\"$HOME/.ssh/id_rsa\" --target production -f ${DockerFilePath} ."
+      // build image
+      //def customImage = docker.build("my-image:${env.BUILD_ID}")
+
+      // push image
+      //customImage.push()
+    //}
+    //}
+  }
+
+
+  stage ('Push docker image') {
+  	docker.withRegistry("https://${ECR_HOST}", "${ECR_CREDENTIAL}") {
+      app.push("${DockerTagName}")
+    }
+  }
+
+  stage ('Deployment') {
+    // Next.js
+    sh "cd /home/ubuntu/git/jenkins/scripts/deploy && node arm64.app.gamoa.js \"\" ${TargetServer} ${AppRootDir} ${ECR_HOST}/${DockerImageName} '[\"http\"]'"
+
+    // Static assets
+    //sh 'pip install awscli --upgrade --user' 
+    //sh "cd deploy && npm i --also-dev && npm run pre-deploy && npm run deploy && npm run purge"
+    sh """
+    rm -rf assets __static__
+    docker run --name temp-container -d -u root ${DockerImageName} 'touch /data/app/test.txt'
+    docker cp temp-container:/data/app/__static__ .
+    docker rm -f temp-container
+    cd deploy && npm i --also-dev && npm run pre-deploy && npm run deploy && npm run purge
+    """
+  }
+}

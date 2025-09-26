@@ -1,0 +1,140 @@
+def TargetServer = "nexus-pr-web-app"
+def DockerRepositoryName = "nexus-pr-web-app"
+def DockerTagNamePrefix = ""
+def DockerFilePath = "./deploy/Dockerfile"
+
+def AppRootDir = "app"
+def DockerRepo = "${ECR_NAMESPACE}/${DockerRepositoryName}"
+def CommitId = ""
+def AppVersion = ""
+def DockerTagName = ""
+def DockerImageName = ""
+
+def ArgocdWorkspace = ""
+
+pipeline {
+  agent {
+    label 'jenkins-agent'
+  }
+
+  //tools {
+  //  nodejs 'nodejs'
+  //  dockerTool 'docker'
+  //}
+
+  stages {
+    // Step 1: Identify the current user and set the workspace
+    stage('Whoami') {
+      steps {
+        sh 'whoami'
+        sh "pwd"
+        sh 'node -v'
+        sh 'npm -v'
+      }
+    }
+
+    // Step 2: Clone the repository and get the current commit ID
+    stage('Clone Repository') {
+      steps {
+        dir('nextjs') {
+          echo "---------------[ Git checkout ]---------------"
+          checkout scm
+
+          script {
+            echo "---------------[ Fetch version ]---------------"
+            CommitId = sh(returnStdout: true, script: 'git rev-parse --short=7 HEAD').trim()
+
+            AppVersion = sh(script: 'node -e "console.log(require(\'./package.json\').version)"', returnStdout: true).trim()
+            DockerTagName = "${DockerTagNamePrefix}v${AppVersion}-${CommitId}"
+            DockerImageName = "${DockerRepo}:${DockerTagName}"
+          }
+        }
+      }
+    }
+
+    // Step 3: Build the Docker image for the application
+    stage('Build Docker Image') {
+      steps {
+        dir('nextjs') {
+          container('docker') {
+            script {
+              echo "---------------[ ECR login ]---------------"
+              sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_HOST}"
+
+              sh "docker buildx create --name builder --use --driver docker-container"
+              sh "docker buildx inspect --bootstrap"
+
+              echo "---------------[ Build docker image ]---------------"
+              sh """
+                docker buildx build \\
+                  -t ${ECR_HOST}/${DockerImageName} \\
+                  -f ${DockerFilePath} \\
+                  --push \\
+                  --ssh pk-for-github=\"$JENKINS_HOME/.ssh/id_rsa\" \\
+                  --target production \\
+                  --build-arg next_public_api_url=${NEXT_PUBLIC_API_URL} \\
+                  --build-arg next_public_cdn_url=${NEXT_PUBLIC_CDN_URL} \\
+                  --cache-from=type=local,src=/buildkit-cache/${DockerRepo} \\
+                  --cache-to=type=local,dest=/buildkit-cache/${DockerRepo},mode=max .
+              """
+
+              echo "---------------[ s3 upload & cloudfront purge ]---------------"
+              sh """
+                rm -rf assets __static__
+                docker run --name temp-container -d -u root ${ECR_HOST}/${DockerImageName} cat
+                docker cp temp-container:/data/app/__static__ .
+                docker rm -f temp-container
+                cd deploy && npm i --also-dev && npm run pre-deploy && npm run deploy && npm run purge
+              """
+            }
+          }
+        }
+      }
+    }
+
+    // Step 4: Deploy the application using the built Docker image. Let Kustomize edit image tag field of manifest file with brand new one.
+    stage('Pull git repository') {
+      steps {
+        dir('argocd') {
+          script {
+            ArgocdWorkspace = pwd()
+            echo "---------------[ Git checkout ]---------------"
+            echo "ArgocdWorkspace: ${ArgocdWorkspace }"
+            echo "branch: ${env.ARGOCD_MENIFEST_GIT_BRANCH}"
+            echo "url: ${env.ARGOCD_MENIFEST_GIT_URL}"
+
+            git credentialsId: 'ci-github',  branch: env.ARGOCD_MENIFEST_GIT_BRANCH, url: env.ARGOCD_MENIFEST_GIT_URL
+
+            echo "---------------[ Install kustomize ]---------------"
+            sh """
+              if [ ! -f "${ArgocdWorkspace }/kustomize" ]; then
+                curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+              fi
+              ${ArgocdWorkspace }/kustomize version
+            """
+        
+            echo "---------------[ Change imag tag ]---------------"
+            sh """
+              cd apps/incentive/${TargetServer}
+              ${ArgocdWorkspace }/kustomize edit set image ${ECR_HOST}/${DockerImageName}
+              rm ${ArgocdWorkspace }/kustomize
+            """
+
+            echo "---------------[ Push to manifest repo ]---------------"
+            withCredentials([
+              gitUsernamePassword(credentialsId: 'ci-github', gitToolName: 'Default')
+            ]) {
+              sh """
+                git config user.email "devops-sooho@sooho.io"
+                git config user.name "devops-sooho"
+                git add -A
+                git commit -m '[jenkins] update image tag = ${ECR_HOST}/${DockerImageName}'
+                git push $env.ARGOCD_MENIFEST_GIT_URL
+              """
+            }
+          }
+        }
+      }
+    }
+  }
+}

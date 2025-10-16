@@ -17,6 +17,7 @@ interface Message {
   content: string;
   role: "user" | "assistant";
   timestamp: number;
+  sources?: string[];
 }
 
 const CustomLink = ({
@@ -140,8 +141,14 @@ export default function ChatPage() {
           ? data
           : (data.answer ?? data.content ?? data.result ?? data.message ?? "");
 
+      const sources =
+        typeof data === "object" && data !== null
+          ? (data.source ?? data.sources ?? [])
+          : [];
+
       hasReceivedData.current = true;
       currentAssistantMessageRef.current.content = fullText;
+      currentAssistantMessageRef.current.sources = sources;
       setMessages((prev) => {
         const newMessages = [...prev];
         const assistantIndex = newMessages.findIndex(
@@ -152,6 +159,7 @@ export default function ChatPage() {
           newMessages[assistantIndex] = {
             ...target,
             content: currentAssistantMessageRef.current?.content || "",
+            sources: currentAssistantMessageRef.current?.sources || [],
           };
         }
         return newMessages;
@@ -225,6 +233,25 @@ export default function ChatPage() {
                     >
                       {message.content}
                     </ReactMarkdown>
+                    {message.sources && message.sources.length > 0 && (
+                      <div className="mt-3 border-t pt-3">
+                        <p className="mb-2 text-sm font-semibold">links:</p>
+                        <ul className="space-y-1 text-sm">
+                          {message.sources.map((source, index) => (
+                            <li key={index} className="text-muted-foreground">
+                              <a
+                                href={source}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="underline hover:text-foreground"
+                              >
+                                {source}
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

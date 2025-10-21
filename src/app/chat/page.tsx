@@ -70,6 +70,17 @@ export default function ChatPage() {
   const idleTimeoutRef = useRef<number | null>(null);
   // Removed streaming; keeping reference here no longer needed
 
+  // 페이지 로드 시 자동으로 안내 메시지 추가
+  useEffect(() => {
+    const welcomeMessage: Message = {
+      id: "welcome",
+      content: "AI 에이전트의 모든 답변은 세븐럭카지노 공식 웹사이트의 공개된 내용을 기준으로 제공합니다.",
+      role: "assistant",
+      timestamp: Date.now(),
+    };
+    setMessages([welcomeMessage]);
+  }, []);
+
   useEffect(() => {
     if (scrollRef.current) {
       const scrollContainer = scrollRef.current.querySelector(

@@ -1,14 +1,26 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { Separator } from "@/components/ui/separator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useLanguage } from "@/providers/language-provider";
 
 interface Props {
   children: React.ReactNode;
+  headerRight?: React.ReactNode;
 }
 
-export const AppLayout = ({ children }: Props) => {
+export const AppLayout = ({ children, headerRight }: Props) => {
   const router = useRouter();
+  const pathname = usePathname();
+  const isChatPage = pathname === "/chat";
+  const { language, setLanguage } = useLanguage();
 
   return (
     <div className="h-full w-screen">
@@ -24,6 +36,26 @@ export const AppLayout = ({ children }: Props) => {
             /> */}
           </div>
         </div>
+        {isChatPage && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm">Language</span>
+            <Select
+              value={language}
+              onValueChange={(value) => setLanguage(value as "ko" | "en")}
+            >
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="언어 선택" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ko">한국어</SelectItem>
+                <SelectItem value="en">English</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {headerRight && !isChatPage && (
+          <div className="flex items-center">{headerRight}</div>
+        )}
         {/* <div className="cursor-pointer desktop:hidden">
           <AlignJustify
             className="size-6"

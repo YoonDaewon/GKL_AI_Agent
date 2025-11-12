@@ -11,6 +11,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useLanguage } from "@/providers/language-provider";
 
 interface Message {
   id: string;
@@ -58,6 +59,7 @@ const CustomLink = ({
 };
 
 export default function ChatPage() {
+  const { language } = useLanguage();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -74,12 +76,15 @@ export default function ChatPage() {
   useEffect(() => {
     const welcomeMessage: Message = {
       id: "welcome",
-      content: "AI 에이전트의 모든 답변은 세븐럭카지노 공식 웹사이트의 공개된 내용을 기준으로 제공합니다.",
+      content:
+        language === "ko"
+          ? "본 서비스는 ChatGPT(4o.mini)를 사용하여 세븐럭 카지노 및 K-Visit 데이터를 기반으로 정보를 제공합니다.\n\n일부 답변은 실제 또는 최신 정보와 다를 수 있습니다."
+          : "This service uses ChatGPT(4o.mini) to provide information based on Seven Luck Casino and K-Visit data.\n\nSome responses may differ from actual or latest information.",
       role: "assistant",
       timestamp: Date.now(),
     };
     setMessages([welcomeMessage]);
-  }, []);
+  }, [language]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -246,7 +251,9 @@ export default function ChatPage() {
                     </ReactMarkdown>
                     {message.sources && message.sources.length > 0 && (
                       <div className="mt-3 border-t pt-3">
-                        <p className="mb-2 text-sm font-semibold">links:</p>
+                        <p className="mb-2 text-sm font-semibold">
+                          {language === "ko" ? "출처" : "Source"}:
+                        </p>
                         <ul className="space-y-1 text-sm">
                           {message.sources.map((source, index) => (
                             <li key={index} className="text-muted-foreground">
@@ -279,7 +286,9 @@ export default function ChatPage() {
                     {/* <AvatarFallback>AI</AvatarFallback> */}
                   </Avatar>
                   <p className="px-2 text-base font-semibold text-black/50">
-                    Sevenluck Concierge is thinking...
+                    {language === "ko"
+                      ? "Sevenluck Concierge가 생각 중입니다..."
+                      : "Sevenluck Concierge is thinking..."}
                   </p>
                 </div>
               </div>
@@ -306,7 +315,7 @@ export default function ChatPage() {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Type your message..."
+            placeholder={language === "ko" ? "메시지를 입력하세요." : "Type your message."}
             className="flex-1"
             disabled={isLoading}
           />

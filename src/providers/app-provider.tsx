@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { QueryContextProvider } from "./react-query";
 import { ThemeProvider } from "./theme-provider";
+import { LanguageProvider } from "./language-provider";
 // import { FontProvider } from "./font-provider";
 
 interface Props {
@@ -13,9 +14,11 @@ export const AppContextProvider: React.FC<Props> = ({ children }) => {
   return (
     <QueryContextProvider>
       <ThemeProvider defaultTheme="light" storageKey="ui-theme">
-        {/* <FontProvider> */}
-        {children}
-        {/* </FontProvider> */}
+        <LanguageProvider>
+          {/* <FontProvider> */}
+          {children}
+          {/* </FontProvider> */}
+        </LanguageProvider>
       </ThemeProvider>
     </QueryContextProvider>
   );
